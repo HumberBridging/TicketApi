@@ -14,7 +14,7 @@ var tickets = new[]
 
 // THE LINE WE CHANGE IN THE DEMO.
 // Edit the message, push, and watch it appear on the live site a minute later.
-app.MapGet("/", () => "SupportHub Ticket API - deployed by GitHub Actions");
+app.MapGet("/", () => "SupportHub Ticket API - deployed by GitHub Actions (after the fix)");
 
 // A health endpoint. Azure and the pipeline both use this to ask "are you alive?"
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));

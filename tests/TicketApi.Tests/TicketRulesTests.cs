@@ -5,7 +5,7 @@ namespace TicketApi.Tests;
 public class TicketRulesTests
 {
     [Theory]
-    [InlineData("New", "New")]
+    [InlineData("New", "Open")]
     [InlineData("Open", "Resolved")]
     [InlineData("Resolved", "Closed")]
     public void NextStatus_moves_a_ticket_forward(string current, string expected)
