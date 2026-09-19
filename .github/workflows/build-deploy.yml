@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+#  SDBP 031 - Module 10 - Basic CI and CD
+#
+#  One file. It builds the app, runs the tests, packages the result,
+#  and (optionally) deploys it to Azure App Service - with no stored secret.
+#
+#  Read it top to bottom - that is the order it runs in.
+# ---------------------------------------------------------------------------
+
+# The name you see at the top of the Actions tab.
+name: build-and-deploy
+
+# WHEN does this run?
+on:
+  push:
+    branches: [ master ]      # every push to master
+  pull_request:
+    branches: [ master ]      # and every pull request aimed at master
+  workflow_dispatch:        # plus a "Run workflow" button you can click
+
+# WHAT is this workflow allowed to do?
+#   id-token: write  lets the workflow ask GitHub for a short-lived identity
+#                    token - the "ID card" it shows Azure. Without this line,
+#                    signing in to Azure fails.
+#   contents: read   lets it read your code. That is all it needs.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  PUBLISH_DIR: ${{ github.workspace }}/publish
+
+jobs:
+  # A job is one machine doing one list of steps.
+  build-test-deploy:
+
+    # GitHub gives us a brand new, empty Ubuntu machine. Nothing of yours is on it.
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Get the code onto the machine. Without this the folder is empty.
+      - name: Checkout the code
+        uses: actions/checkout@v6
+
+      # 2. Install the .NET SDK. A fresh machine does not have our version.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # 3. Download the NuGet packages the projects depend on.
+      - name: Restore packages
+        run: dotnet restore
+
+      # 4. Compile. If this fails, every step below is skipped.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      # 5. Prove it still works. THIS is the gate.
+      #    A failing test stops the job here - nothing gets published,
+      #    and nothing gets deployed.
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+      # 6. Produce the actual files that run on a server.
+      - name: Publish
+        run: dotnet publish src/TicketApi/TicketApi.csproj --configuration Release --no-build --output ${{ env.PUBLISH_DIR }}
+
+      # 7. Keep the published output so you can download it from the run page.
+      #    This is your proof the pipeline worked, even with no Azure account.
+      - name: Upload the published app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticket-api
+          path: ${{ env.PUBLISH_DIR }}
+
+      # 8. OPTIONAL - sign in to Azure. Notice there is no password here.
+      #    GitHub gives this run a short-lived token that says "I am a run of
+      #    this repository, on this branch". Azure was told in advance to trust
+      #    exactly that statement, and hands back an access token good for a few
+      #    minutes. Nothing is stored on either side.
+      #
+      #    These three values are identifiers, NOT secrets - they are useless
+      #    without the trust relationship - so they live in Variables, and the
+      #    Secrets tab of this repository stays empty.
+      #
+      #    Repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+      #                          AZURE_SUBSCRIPTION_ID, AZURE_WEBAPP_NAME
+      #    No Azure account? Leave them unset. The workflow still goes green.
+      - name: Sign in to Azure
+        if: ${{ vars.AZURE_WEBAPP_NAME != '' && github.event_name != 'pull_request' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # 9. Deploy. No password input at all - it uses the sign-in above.
+      - name: Deploy to Azure App Service
+        if: ${{ vars.AZURE_WEBAPP_NAME != '' && github.event_name != 'pull_request' }}
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ${{ env.PUBLISH_DIR }}
